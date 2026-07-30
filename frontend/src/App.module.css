@@ -1,0 +1,72 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.main {
+  display: flex;
+  flex: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 1.5rem 2rem;
+  gap: 2rem;
+  height: calc(100vh - 72px); /* Header height */
+  overflow: hidden;
+}
+
+.leftPane, .rightPane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+.leftPane {
+  flex: 0 0 400px;
+}
+
+.paneInner {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  padding: 1.5rem;
+  height: 100%;
+  overflow-y: auto;
+  box-shadow: var(--shadow-sm);
+}
+
+.divider {
+  width: 1px;
+  background: var(--border);
+  margin: 1rem 0;
+}
+
+.errorBanner {
+  background: rgba(244, 63, 94, 0.1);
+  color: var(--accent-light);
+  border-left: 4px solid var(--accent);
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+}
+
+@media (max-width: 992px) {
+  .main {
+    flex-direction: column;
+    height: auto;
+    overflow: visible;
+  }
+  
+  .leftPane {
+    flex: none;
+  }
+  
+  .divider {
+    height: 1px;
+    width: 100%;
+    margin: 0;
+  }
+}

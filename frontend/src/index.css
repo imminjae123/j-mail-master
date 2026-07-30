@@ -1,0 +1,89 @@
+/* =========================================================
+   J-Mail Master — Global Design System
+   カラーパレット: ディープネイビー + 桜ピンクアクセント
+   ========================================================= */
+
+:root {
+  /* --- Colors --- */
+  --bg-base:       #0b1120;
+  --bg-surface:    #131c2e;
+  --bg-card:       #1a2540;
+  --bg-hover:      #1f2e4e;
+  --border:        #2a3a5c;
+  --border-light:  #3a4f78;
+
+  --accent:        #f43f5e;
+  --accent-light:  #fb7185;
+  --accent-dark:   #e11d48;
+  --accent-glow:   rgba(244, 63, 94, 0.18);
+
+  --text-primary:  #f0f4ff;
+  --text-secondary:#94a3b8;
+  --text-muted:    #64748b;
+  --text-on-accent:#ffffff;
+
+  --success:       #10b981;
+  --warning:       #f59e0b;
+  --info:          #3b82f6;
+
+  /* --- Typography --- */
+  --font-sans:     'Inter', 'Noto Sans JP', -apple-system, sans-serif;
+  --font-jp:       'Noto Sans JP', 'Inter', sans-serif;
+
+  /* --- Spacing --- */
+  --radius-sm:     6px;
+  --radius-md:     10px;
+  --radius-lg:     16px;
+  --radius-xl:     24px;
+
+  /* --- Shadows --- */
+  --shadow-sm:     0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md:     0 4px 16px rgba(0,0,0,0.5);
+  --shadow-lg:     0 8px 32px rgba(0,0,0,0.6);
+  --shadow-accent: 0 0 24px rgba(244, 63, 94, 0.25);
+
+  /* --- Transitions --- */
+  --transition:    all 0.2s ease;
+}
+
+/* ---- Reset ---- */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 15px;
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-base);
+  color: var(--text-primary);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---- Scrollbar ---- */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-base); }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ---- Selection ---- */
+::selection {
+  background: var(--accent-glow);
+  color: var(--accent-light);
+}
+
+/* ---- Utility ---- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+}
