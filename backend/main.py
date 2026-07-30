@@ -9,11 +9,13 @@ J-Mail Master — FastAPI Backend
 
 import os
 import json
+import logging
 import pathlib
+import re
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -21,6 +23,8 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 # --- OpenAI はオプション ---
 try:
@@ -138,6 +142,44 @@ CUSHION_BY_PURPOSE = {
     "お礼": "先日はお時間を頂戴いたしまして、誠にありがとうございました。",
 }
 
+
+def _contains_japanese(text: str) -> bool:
+    return any("\u3040" <= ch <= "\u30ff" or "\u4e00" <= ch <= "\u9fff" for ch in text)
+
+
+def _needs_translation(text: str) -> bool:
+    """コア要件が日本語以外（英語・韓国語など）かどうかを判定する"""
+    if any("\uac00" <= ch <= "\ud7a3" for ch in text):
+        return True
+    has_latin = any("a" <= ch.lower() <= "z" for ch in text)
+    return has_latin and not _contains_japanese(text)
+
+
+def _translate_to_japanese(text: str) -> Optional[str]:
+    """AI生成失敗時のフォールバック翻訳"""
+    try:
+        from deep_translator import GoogleTranslator
+
+        translated = GoogleTranslator(source="auto", target="ja").translate(text.strip())
+        return translated.strip() if translated else None
+    except Exception as exc:
+        logger.warning("Translation fallback failed: %s", exc)
+        return None
+
+
+def _extract_json_array(raw: str) -> list:
+    """AIレスポンスから JSON 配列を取り出す"""
+    cleaned = raw.strip()
+    if "```" in cleaned:
+        cleaned = cleaned.split("```")[1]
+        if cleaned.startswith("json"):
+            cleaned = cleaned[4:]
+        cleaned = cleaned.strip()
+    match = re.search(r"\[.*\]", cleaned, re.DOTALL)
+    if match:
+        cleaned = match.group(0)
+    return json.loads(cleaned)
+
 # ---------------------------------------------------------------------------
 # ルールベース生成
 # ---------------------------------------------------------------------------
@@ -199,8 +241,12 @@ def _openai_generate(req: GenerateRequest) -> Optional[List[EmailVariant]]:
         "2. 文脈に合ったクッション言葉（例：「恐れ入りますが」「お手数をおかけしますが」）を必ず使うこと\n"
         "3. 二重敬語（例：「おっしゃられた」）は絶対に使わないこと\n"
         "4. ユーザーが入力したコア要件に含まれる日時・金額・固有名詞などの事実情報を絶対に変更・省略・捏造しないこと\n"
-        "5. 入力にない情報を勝手に追加しないこと\n"
-        "6. 生成するメールは必ず日本語で書くこと"
+        "   ※外国語で書かれたコア要件を日本語に翻訳することは、事実情報の意味を保った言語変換であり、変更に該当しない\n"
+        "5. ユーザーの入力（コア要件）が日本語以外（英語や韓国語など）で書かれている場合、その意味を汲み取り、"
+        "自然な日本語のビジネス表現に翻訳してからメール本文に組み込むこと\n"
+        "6. 生成するメールの件名および本文に、日本語以外の言語（英語や韓国語の原文）をそのまま残さないこと（固有名詞は除く）\n"
+        "7. 入力にない情報を勝手に追加しないこと\n"
+        "8. 生成するメールは必ず日本語で書くこと"
     )
 
     signature = _build_signature(req)
@@ -222,13 +268,18 @@ def _openai_generate(req: GenerateRequest) -> Optional[List[EmailVariant]]:
         user_prompt += f"署名: {signature}\n"
 
     user_prompt += (
+        "\n※コア要件が日本語以外で書かれている場合は、意味を保ったまま自然な日本語のビジネス表現に翻訳し、"
+        "件名・本文ともに日本語のみで出力してください。\n"
         "\n以下のJSON配列のみを返してください（マークダウンや説明文は不要）:\n"
         '[{"label":"非常に丁寧","subject":"件名","body":"本文"},'
         '{"label":"簡潔・明確","subject":"件名","body":"本文"}]'
     )
 
     try:
-        client = _OpenAI(api_key=key)
+        client = _OpenAI(
+            api_key=key,
+            base_url=os.environ.get("OPENAI_BASE_URL")
+        )
         model = os.environ.get("OPENAI_MODEL", "gpt-4o")
         resp = client.chat.completions.create(
             model=model,
@@ -240,14 +291,10 @@ def _openai_generate(req: GenerateRequest) -> Optional[List[EmailVariant]]:
             temperature=0.7,
         )
         raw = resp.choices[0].message.content.strip()
-        # コードブロックがあれば除去
-        if "```" in raw:
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        data = json.loads(raw)
+        data = _extract_json_array(raw)
         return [EmailVariant(**v) for v in data]
-    except Exception:
+    except Exception as exc:
+        logger.warning("OpenAI generation failed: %s", exc)
         return None
 
 
@@ -282,7 +329,10 @@ def _openai_refine(req: RefineRequest) -> Optional[RefineResponse]:
     )
 
     try:
-        client = _OpenAI(api_key=key)
+        client = _OpenAI(
+            api_key=key,
+            base_url=os.environ.get("OPENAI_BASE_URL")
+        )
         model = os.environ.get("OPENAI_MODEL", "gpt-4o")
         resp = client.chat.completions.create(
             model=model,
@@ -369,12 +419,25 @@ def _rule_based_refine(req: RefineRequest) -> RefineResponse:
 # ---------------------------------------------------------------------------
 @app.post("/generate", response_model=List[EmailVariant])
 def generate(req: GenerateRequest):
-    """2案のビジネスメールを生成する（OpenAI優先、失敗時はルールベース）"""
+    """2案のビジネスメールを生成する（OpenAI優先、失敗時は翻訳+ルールベース）"""
     provider = os.environ.get("GENERATION_PROVIDER", "auto")
     if provider in ("openai", "auto"):
         result = _openai_generate(req)
         if result:
             return result
+
+    if _needs_translation(req.core_requirements):
+        translated = _translate_to_japanese(req.core_requirements)
+        if not translated:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "AI生成が利用できず、コア要件の翻訳にも失敗しました。"
+                    "OPENAI_API_KEY の設定・APIクォータ、またはネットワーク接続を確認してください。"
+                ),
+            )
+        req = req.model_copy(update={"core_requirements": translated})
+
     return _rule_based_generate(req)
 
 
