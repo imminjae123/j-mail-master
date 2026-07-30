@@ -43,11 +43,14 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || `HTTP ${res.status}`)
+      }
       const data = await res.json()
       setVariants(data)
     } catch (err) {
-      setError('生成に失敗しました。バックエンドが起動しているか確認してください。')
+      setError(err.message || '生成に失敗しました。バックエンドが起動しているか確認してください。')
       console.error(err)
     } finally {
       setIsLoading(false)
